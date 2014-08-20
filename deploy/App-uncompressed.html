@@ -1,0 +1,564 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>FeatureThroughputReport</title>
+
+    <script type="text/javascript" src="/apps/2.0rc3/sdk.js"></script>
+
+    <script type="text/javascript">
+        Rally.onReady(function () {
+                Ext.define("CustomApp",{
+    extend:"Rally.app.App",
+    componentCls:"app",
+    items:[
+        {
+            xtype:"container",
+            itemId:"nav",
+            id:"nav",
+            html:'<a href="#" onClick="Rally.getApp().setStacking();return false;">Change stacking type</a>'
+            
+        },
+        {
+            xtype:"container",
+            itemId:"filterContainer",
+            id:"filterContainer"
+            
+        },
+        {
+            xtype:"container",
+            itemId:"infoContainer",
+            id:"infoContainer",
+            hidden:!0
+            
+        },
+        {
+            xtype:"container",
+            itemId:"firstReport",
+            id:"firstReport",
+            items:[
+                {
+                    xtype:"container",
+                    itemId:"defaultChartContainer",
+                    id:"defaultChartContainer"
+                    
+                },
+                {
+                    xtype:"container",
+                    itemId:"firstReport_GridContainer",
+                    id:"firstReport_GridContainer"
+                    
+                }
+                ]
+            
+        }
+        ],
+        
+        launch:function()
+        {
+            this.activeView="firstReport",
+            this.stackType="normal",
+            this._init(),
+            this._createFilterContainer()
+            
+        },
+        
+        setStacking:function()
+        {
+            this.stackType=null===this.stackType?"normal":null,
+            this._init(),
+            this._processStoreData(this.featureStore,this.featureStoreData)
+            
+        },
+        
+        _init:function()
+        {
+            if(this._displayMask(),this.dynamicItems===void 0&&(this.dynamicItems={}),this.dynamicItems[this.activeView]===void 0)
+            this.dynamicItems[this.activeView]={};
+            else
+            {
+                var item;
+                for(item in this.dynamicItems[this.activeView])
+                this.dynamicItems[this.activeView][item].destroy()
+                
+            }
+            
+        },
+        
+        _createFilterContainer:function()
+        {
+            var that=this, 
+            d=new Date,
+            filterContainer;
+            this.selectedTags=[],
+            d.setMonth(d.getMonth()-12),
+            filterContainer=Ext.create("Ext.Container",{
+                items:[
+                    {
+                        xtype:"rallydatefield",
+                        id:"startDate",
+                        cls:"filterItem",
+                        fieldLabel:"Features ended between ",
+                        value:d,
+                        labelWidth:150,
+                        style:
+                        {
+                            "float":"left"
+                            
+                        },
+                        listeners:{
+                            select:this._createStoreFilter,scope:this
+                            
+                        }
+                        
+                    },
+                    {
+                        xtype:"rallydatefield",
+                        id:"endDate",
+                        cls:"filterItem",
+                        fieldLabel:" and ",
+                        labelWidth:30,
+                        style:
+                        {
+                            "float":"left"
+                            
+                        },
+                        value:new Date,
+                        listeners:
+                        {
+                            afterrender:this._createStoreFilter,
+                            select:this._createStoreFilter,
+                            scope:this
+                            
+                        }
+                        
+                    },
+                    {
+                        fieldLabel:"Choose a Tag",
+                        labelWidth:100,
+                        width:300,
+                        xtype:"rallytagpicker",
+                        id:"tagPicker",
+                        cls:"filterItem tagItem",
+                        style:
+                        {
+                            "float":"left"
+                            
+                        },
+                        listeners:
+                        {
+                            selectionchange:function(field,values,options)
+                            {
+                                that.selectedTags=values,
+                                that._createStoreFilter()
+                                
+                            },
+                            scope:this
+                            
+                        }
+                        
+                    }
+                    ]
+                
+            }),
+            this.down("#filterContainer").add(filterContainer)
+            
+        },
+        
+        _createStoreFilter:function(){
+            this._destroyDynamicItems();
+            var i,d1,d2,startId="startDate",endId="endDate";
+            for(this._displayMask(),
+                d1=new Date(Ext.getCmp(startId).getValue()),
+                d2=new Date(Ext.getCmp(endId).getValue()),
+                d1>d2&&(Ext.getCmp(startId).setValue(d2),
+                        Ext.getCmp(endId).setValue(d1),
+                        d1=new Date(Ext.getCmp(startId).getValue()),
+                        d2=new Date(Ext.getCmp(endId).getValue())
+                        ),
+                        filter=Ext.create("Rally.data.QueryFilter",{
+                            property:"ActualEndDate",
+                            operator:">=",
+                            value:d1.getFullYear()+"-"+(parseInt(d1.getMonth())+1)+"-"+d1.getDate()
+                            
+                        }).and(Ext.create("Rally.data.QueryFilter",{
+                            property:"ActualEndDate",
+                            operator:"<=",value:d2.getFullYear()+"-"+(parseInt(d2.getMonth())+1)+"-"+d2.getDate()})
+                            ),
+                            i=0;this.selectedTags.length>i;++i)
+                            filter=filter.and(Ext.create("Rally.data.QueryFilter",{
+                                property:"Tags.Name",
+                                operator:"=",
+                                value:this.selectedTags[i].data.Name
+                                
+                            }));
+                            this._queryDataStore(filter)
+            
+        },
+        
+        _queryDataStore:function(filter){
+            Ext.create("Rally.data.WsapiDataStore",
+            {
+                config:{
+                    autoLoad:!0,
+                    workspace:this.getContext().getWorkspace().ObjectID,
+                    project:this.getContext().getProject().ObjectID,
+                    limit:"Infinity"
+                    
+                },
+                model:"PortfolioItem/Feature",
+                filters:filter,
+                sorters:[
+                    {
+                        property:"ActualEndDate",
+                        direction:"ASC"
+                        
+                    }
+                    ],
+                    listeners:{
+                        load:this._processStoreData,
+                        scope:this
+                        
+                    },
+                    fetch:["Name,ActualStartDate,ActualEndDate,PreliminaryEstimate,FormattedID,Tags,DirectChildrenCount"]
+                
+            })
+            
+        },
+        
+        _processStoreData:function(store,data,success)
+        {
+            this.featureStore=store,
+            this.featureStoreData=data,
+            this.groupedSeries=[];
+            var that=this,
+            field=store.model.getField("PreliminaryEstimate");
+            field.getAllowedValueStore().load({
+                    scope:this,
+                    callback:function(records,operation,success)
+                    {
+                        Ext.Array.each(records,function(val)
+                        {
+                            var s=val.get("StringValue");
+                            s&&that.groupedSeries.push(
+                                {
+                                    name:s,
+                                    data:[],
+                                    stack:"qSizes"
+                                    
+                                })
+                            
+                        }),
+                        that.groupedSeries.push({
+                                name:"N/A",
+                                data:[],
+                                stack:"qSizes"
+                                
+                            }),
+                        that.continueStoreDataProcess(store,data,success)
+                        
+                    }
+                    
+                })
+            
+        },
+        
+        continueStoreDataProcess:function(store,data,success)
+        {
+            if(0===data.length)
+            {
+                var item;
+                return Ext.get("infoContainer").setHTML("No Features found for given project / filter setting.").show(),
+                this._destroyDynamicItems(),
+                Ext.getBody().unmask(),
+                void 0
+                
+            }
+            Ext.get("infoContainer")&&Ext.get("infoContainer").hide();
+            var leadTime,i;
+            for(this.chartData={
+                totalCount:0,
+                quarters:{},
+                quarterCount:0,
+                categories:[]
+                
+            },i=0;store.data.items.length>i;++i)
+            leadTime=Rally.util.DateTime.getDifference(store.data.items[i].data.ActualEndDate,store.data.items[i].data.ActualStartDate,"day"),
+            store.data.items[i].data.LeadTime=leadTime+" days",store.data.items[i].data.custPreliminaryEstimate=null===store.data.items[i].data.PreliminaryEstimate?"N/A":store.data.items[i].data.PreliminaryEstimate.Name,this._buildChartData(store,i);
+            this._initAndDrawCharts(this.chartData)
+            
+        },
+        
+        _initAndDrawCharts:function(inputData)
+        {
+            if(0!==inputData.totalCount)
+            {
+                var throughput=[],i,qCount=0,currTotalCount=0,avgTotals=[],quarterAVGs=[];
+                for(i in inputData.quarters)
+                    throughput.push(inputData.quarters[i].count),
+                    currTotalCount+=inputData.quarters[i].count,
+                    qCount++,
+                    avgTotals.push(Math.round(currTotalCount/qCount,2));
+                for(i=0;inputData.quarterCount>i;++i)
+                    quarterAVGs.push(Math.round(inputData.totalCount/inputData.quarterCount,2));
+                this.groupedSeries.unshift({
+                    name:"Throughput",
+                    data:throughput}),
+                this.groupedSeries.push(
+                    {
+                        type:"spline",
+                        name:"Moving Average",
+                        data:avgTotals,color:"blue",
+                        marker:
+                        {
+                            lineWidth:1,
+                            fillColor:"red"
+                        }
+                        
+                    }),
+                this.groupedSeries.push({
+                    type:"spline",
+                    name:"Average / Quarter",
+                    data:quarterAVGs,
+                    color:"purple",
+                    marker:{
+                        lineWidth:1,
+                        fillColor:"red"
+                        
+                    }
+                    
+                }),
+                this.groupedSeries.push({
+                    name:"Total Features: "+inputData.totalCount,
+                    color:"#fff",
+                    stack:"blank"
+                    
+                }),
+                this._drawHorizontalBarChart(inputData.categories,this.groupedSeries)
+                
+            }
+            
+        },
+        
+        _buildChartData:function(store,i){
+            var chartData=this.chartData,
+                custPrelEstimate,
+                endDate=new Date(store.data.items[i].data.ActualEndDate),
+                quarterCat,s;
+            if(custPrelEstimate=store.data.items[i].data.custPreliminaryEstimate,quarterCat="Q"+Math.floor((endDate.getMonth()+3)/3)+"-"+endDate.getFullYear(),chartData.quarters[quarterCat]===void 0)
+            {
+                chartData.quarters[quarterCat]={
+                    count:0,
+                    estimates:{},
+                    features:[]
+                    
+                },
+                chartData.categories.push(quarterCat);
+                for(s in this.groupedSeries)
+                    this.groupedSeries[s].data.push(0);
+                chartData.quarterCount++
+                
+            }
+            for(chartData.quarters[quarterCat].features.push(store.data.items[i]),chartData.quarters[quarterCat].estimates[custPrelEstimate]===void 0&&(chartData.quarters[quarterCat].estimates[custPrelEstimate]=0),chartData.quarters[quarterCat].estimates[custPrelEstimate]++,chartData.quarters[quarterCat].count++,chartData.totalCount++,s=0;this.groupedSeries.length>s;++s)
+                custPrelEstimate===this.groupedSeries[s].name&&(this.groupedSeries[s].data[chartData.quarterCount-1]=chartData.quarters[quarterCat].estimates[custPrelEstimate]);
+            this.chartData=chartData
+            
+        },
+        
+        _drawBarChart:function(conf)
+        {
+            this.dynamicItems[this.activeView][conf.id]!==void 0&&this.dynamicItems[this.activeView][conf.id].destroy();
+            var that=this;
+            this.dynamicItems[this.activeView][conf.id]=this.down(conf.targetContainer).add({
+                xtype:"rallychart",
+                id:conf.id,
+                chartData:{
+                    series:conf.series
+                    
+                },
+                chartConfig:{
+                    plotOptions:{
+                        column:{
+                            stacking:that.stackType,
+                            cursor:"pointer",
+                            point:{
+                                events:{
+                                    click:function(){
+                                        var data=[],store,item,features=Rally.getApp().chartData.quarters[this.category].features;
+                                        for(item in features)
+                                        ("Throughput"===this.series.name||this.series.name===features[item].data.custPreliminaryEstimate)&&data.push(features[item].data);
+                                        store=Ext.create("Rally.data.custom.Store",{
+                                            data:data
+                                            
+                                        }),
+                                        Rally.getApp()._addFeatureGrid(store,"featureGrid","Throughput"===this.series.name?"Features ended in: "+this.category:'Features with size "'+this.series.name+'" ended in: '+this.category)
+                                        
+                                    }
+                                    
+                                }
+                                
+                            }
+                            
+                        }
+                        
+                    },
+                    chart:{
+                        plotBackgroundColor:null,
+                        plotBorderWidth:null,
+                        plotShadow:!1,
+                        type:conf.chartType
+                        
+                    },
+                    legend:{
+                        align:"right",
+                        verticalAlign:"top",
+                        x:0,
+                        y:100,
+                        layout:"vertical"
+                        
+                    },
+                    title:{
+                        text:conf.chartTitle
+                        
+                    },
+                    tooltip:{
+                        formatter:function(){
+                            return"<b>"+this.series.name+" | "+this.x+"</b><br/>"+"<b>"+this.y+"</b> Features<br/><i>(Click to view Features)</i>"
+                            
+                        }
+                        
+                    },
+                    yAxis:[{
+                        title:{
+                            text:conf.yAxisTitle
+                            
+                        }
+                        
+                    }],
+                    xAxis:[{
+                        title:{
+                            text:conf.xAxisTitle
+                            
+                        },
+                        categories:conf.xAxisCategories
+                        
+                    }]
+                    
+                }
+                
+            }),
+            this.down("#"+conf.id)._unmask()
+            
+        },
+        
+        _drawHorizontalBarChart:function(categories,data){
+            var conf={
+                id:"verticalBars",
+                targetContainer:"#defaultChartContainer",
+                series:data,
+                chartType:"column",
+                chartTitle:"Throughput by Quarters",
+                xAxisCategories:categories,
+                xAxisTitle:"Quarters",
+                yAxisTitle:"Count"
+                
+            };
+            this._drawBarChart(conf),Ext.getBody().unmask()
+            
+        },
+        
+        _addFeatureGrid:function(store,id,title){
+            this.dynamicItems[this.activeView][id]&&this.dynamicItems[this.activeView][id].destroy(),Rally.data.ModelFactory.getModel({
+                type:"PortfolioItem/Feature",
+                success:function(model){
+                    var featureGrid=this.down("#"+this.activeView+"_GridContainer").add({
+                        xtype:"rallygrid",
+                        id:id,
+                        listeners:{
+                            render:function(){
+                                Ext.getBody().unmask()
+                                
+                            }
+                            
+                        },
+                        style:{
+                            marginTop:30
+                            
+                        },
+                        width:1200,
+                        model:model,
+                        store:store,
+                        title:title,
+                        columnCfgs:[{
+                            text:"ID",
+                            dataIndex:"FormattedID",
+                            width:60,
+                            renderer:function(value,style,item,rowIndex){
+                                return Ext.String.format("<a target='_top' href='{1}'>{0}</a>",value,Rally.nav.Manager.getDetailUrl(item))
+                                
+                            }
+                            
+                        },
+                        {
+                            text:"Name",
+                            dataIndex:"Name",
+                            width:600
+                            
+                        },
+                        {
+                            text:"Stories",
+                            dataIndex:"DirectChildrenCount",
+                            width:60
+                            
+                        },
+                        "ActualStartDate","ActualEndDate",{
+                            text:"Preliminary Estimate",
+                            dataIndex:"custPreliminaryEstimate"
+                            
+                        },
+                        {
+                            text:"Lead Time",
+                            dataIndex:"LeadTime"
+                            
+                        },
+                        "Tags"
+                        ]
+                        
+                    });
+                    this.dynamicItems[this.activeView][id]=featureGrid},scope:this
+                
+            }
+            )},
+            
+            _destroyDynamicItems:function(){
+                var item;
+                for(item in this.dynamicItems[this.activeView])
+                    this.dynamicItems[this.activeView][item].destroy()
+                
+            },
+            
+            _displayMask:function(){
+                Ext.getBody().mask("Report creation in progress...")
+                
+            }
+    
+});
+
+            Rally.launchApp('CustomApp', {
+                name:"FeatureThroughputReport",
+	            parentRepos:""
+            });
+
+        });
+    </script>
+
+
+    <style type="text/css">
+        .app {
+  /* Add app styles here */
+}
+
+    </style>
+</head>
+<body>
+</body>
+</html>
